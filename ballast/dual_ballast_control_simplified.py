@@ -22,6 +22,7 @@ encoder_1_pos = [0]
 encoder_2_pos = [0]
 lock1     = threading.Lock()
 lock2     = threading.Lock()
+neutral_pos = 7500
 
 # GPIO SETUP
 enc_A       = GPIO(ENCODER_PIN_A,   "in")
@@ -99,7 +100,6 @@ def get_pos_1():
 def get_pos_2():
     with lock2:
         return encoder_2_pos[0]
-
 def set_pos_1(value):
     with lock1:
         encoder_1_pos[0] = value
@@ -116,9 +116,21 @@ def home_motors():
     btn_2_pressed = False
 
     try:
-        motor_1_reverse()
-        motor_2_reverse()
+        # edge case if button 1 is pressed
+        if button_1_pressed() and not(button_2_pressed()):
+            motor_2_reverse()
+            print("Reversing only motor 2")
+        elif not(button_1_pressed()) and button_2_pressed():
+            motor_1_reverse()
+            print("Reversing only motor 1")
+        # elif button_1_pressed() and button_2_pressed():
+        #     # do nothing
+        elif not(button_1_pressed()) and not(button_2_pressed()):
+            motor_1_reverse()
+            motor_2_reverse()
+            print("Reversing both motors")
 
+        print("Waiting for motors to reach home")
         while not (button_1_pressed() and button_2_pressed()):
             if time.time() - start_time > HOMING_TIMEOUT:
                 motor_1_stop()
@@ -158,6 +170,10 @@ def move_to_position(target, timeout=30.0):
     m1_done = False
     m2_done = False
 
+    # check if close enough already
+    if (abs(get_pos_1() - target) < 200) and (abs(get_pos_2() - target) < 200):
+        return True
+    
     while True:
         pos_1 = get_pos_1()
         pos_2 = get_pos_2()
@@ -202,29 +218,16 @@ def move_to_position(target, timeout=30.0):
 
         time.sleep(0.001)
 
-# MANUAL POSITION MODE
-def manual_mode():
-    print("\n=== MANUAL MODE ===")
-    print("  Enter a target encoder position.")
-    print(f"  Current positions: {get_pos_1()}, {get_pos_2()}")
-    print("  Type 'q' to go back.\n")
-
-    while True:
-        try:
-            user_input = input("  Target position: ").strip()
-            if user_input.lower() == 'q':
-                break
-
-            target = int(user_input)
-            move_to_position(target)
-
-        except ValueError:
-            print("  Invalid input. Enter an integer or 'q'.")
-        except KeyboardInterrupt:
-            motor_1_stop()
-            motor_2_stop()
-            print("\n  Manual mode stopped.")
-            break
+# startup procedure
+def ballast_startup():
+    try:
+        print("Homing motors")
+        home_motors()
+        print("Homing finished, moving to neutral position")
+        move_to_position(neutral_pos)
+                
+    except KeyboardInterrupt:
+        pass
 
 # MAIN MENU
 def main():
@@ -233,20 +236,20 @@ def main():
     t1.start()
     t2.start()
     print("Encoder thread started.")
+    ballast_startup()
+    print("Ballasts are ready for input")
 
     try:
         while True:
-            print("=============================")
-            print(" [1] Manual mode      (enter position)")
-            print(" [2] Home / Zero      (run to button)")
-            print("=============================")
+            print("----Give input----")
+            choice = input("Select: ").strip()
 
-            choice = input(" Select: ").strip()
-
-            if   choice == '1':
-                manual_mode()
-            elif choice == '2':
+            if choice == '-1':
                 home_motors()
+            elif choice == '0':
+                move_to_position(neutral_pos)
+            elif choice == '1':
+                move_to_position(neutral_pos*2)
                 
     except KeyboardInterrupt:
         pass

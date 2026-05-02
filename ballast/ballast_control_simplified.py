@@ -13,7 +13,7 @@ ZERO_BUTTON_PIN = 52    # Pushbutton for homing/zeroing
 MOTOR_INVERT        = False
 ENCODER_INVERT      = False
 ZERO_BUTTON_INVERT  = False
-HOMING_DIRECTION    = "reverse"  # Direction to move during homing: "forward" or "reverse"
+HOMING_DIRECTION    = "reverse"
 HOMING_TIMEOUT      = 30.0       # Seconds before homing gives up
 
 # POSITION CONFIGURATION
@@ -24,6 +24,7 @@ encoder_position = 0
 encoder_lock     = threading.Lock()
 last_A = False
 last_B = False
+neutral_pos = 30000
 
 # GPIO SETUP
 enc_A       = GPIO(ENCODER_PIN_A,   "in")
@@ -32,11 +33,8 @@ motor_fwd   = GPIO(MOTOR_PIN_FWD,   "out")
 motor_rev   = GPIO(MOTOR_PIN_REV,   "out")
 zero_button = GPIO(ZERO_BUTTON_PIN, "in")
 
-# BUTTON READ
+# BUTTON READ - return true when button is pressed
 def button_pressed(): 
-    """
-    Returns True when the zero button is physically pressed.
-    """
     state = zero_button.read()
     return (not state) if ZERO_BUTTON_INVERT else state
 
@@ -70,11 +68,8 @@ X4_TABLE = [
     0, -1,  1,  0,
 ]
 
+# poll encoder pins and update position, run as daemon thread
 def encoder_thread_func():
-    """
-    Continuously polls encoder pins and updates
-    position using X4 decoding. Runs as daemon thread.
-    """
     global encoder_position, last_A, last_B
 
     last_A = enc_A.read()
@@ -174,27 +169,27 @@ def move_to_position(target, timeout=30.0):
         time.sleep(0.001)
 
 # MANUAL POSITION MODE
-def manual_mode():
-    print("\n=== MANUAL MODE ===")
-    print("  Enter a target encoder position.")
-    print(f"  Current position: {get_position()}")
-    print("  Type 'q' to go back.\n")
+# def manual_mode():
+#     print("\n=== MANUAL MODE ===")
+#     print("  Enter a target encoder position.")
+#     print(f"  Current position: {get_position()}")
+#     print("  Type 'q' to go back.\n")
 
-    while True:
-        try:
-            user_input = input("  Target position: ").strip()
-            if user_input.lower() == 'q':
-                break
+#     while True:
+#         try:
+#             user_input = input("  Target position: ").strip()
+#             if user_input.lower() == 'q':
+#                 break
 
-            target = int(user_input)
-            move_to_position(target)
+#             target = int(user_input)
+#             move_to_position(target)
 
-        except ValueError:
-            print("  Invalid input. Enter an integer or 'q'.")
-        except KeyboardInterrupt:
-            motor_stop()
-            print("\n  Manual mode stopped.")
-            break
+#         except ValueError:
+#             print("  Invalid input. Enter an integer or 'q'.")
+#         except KeyboardInterrupt:
+#             motor_stop()
+#             print("\n  Manual mode stopped.")
+#             break
 
 # MAIN MENU
 def main():
@@ -204,17 +199,33 @@ def main():
 
     try:
         while True:
-            print("=============================")
-            print(" [1] Manual mode      (enter position)")
-            print(" [2] Home / Zero      (run to button)")
-            print("=============================")
+            print("Homing motor")
+            home_motor()
+            move_to_position(neutral_pos) # neutral point
+            print("Homing finished")
+            
+            print("Give input")
+            choice = input("Select: ").strip()
 
-            choice = input(" Select: ").strip()
-
-            if   choice == '1':
-                manual_mode()
-            elif choice == '2':
+            if choice == '-1':
                 home_motor()
+            elif choice == '0':
+                move_to_position(neutral_pos)
+            elif choice == '1':
+                move_to_position(neutral_pos*2)
+
+
+            # print("=============================")
+            # print(" [1] Manual mode      (enter position)")
+            # print(" [2] Home / Zero      (run to button)")
+            # print("=============================")
+
+            # choice = input(" Select: ").strip()
+
+            # if   choice == '1':
+            #     manual_mode()
+            # elif choice == '2':
+            #     home_motor()
                 
     except KeyboardInterrupt:
         pass

@@ -1,6 +1,14 @@
+# -----Joystick Naming-----
+# left joystick horizontal = ljx
+# left joystick vertical = ljy
+# right joystick horizontal = rjx
+# right joystick vertical = rjy
+# right trigger = rt
+
 import pygame
 import socket
 import time
+import struct
 
 pygame.init()
 pygame.joystick.init()
@@ -16,23 +24,18 @@ sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 target_ip = "192.168.1.50"
 target_port = 5005
 
-def normalize(axis):
-    # pygame axis is [-1, 1] → convert to [0, 1]
-    return (axis + 1) / 2
-
 while True:
     pygame.event.pump()
 
-    raw_axis = joystick.get_axis(0)
-    value = normalize(raw_axis)
+    rjx = joystick.get_axis(0)
+    rjy = joystick.get_axis(1)
+    ljy = joystick.get_axis(2)
+    ljx = joystick.get_axis(3)
+    rt = joystick.get_axis(5)
 
-    # optional: deadzone to reduce noise
-    if abs(raw_axis) < 0.05:
-        value = 0.5
+    axes_data = struct.pack("5f", rjx, rjy, ljy, ljx, rt)
+    sock.sendto(axes_data, (target_ip, target_port))
 
-    # send as float string
-    sock.sendto(f"{value:.3f}".encode(), (target_ip, target_port))
-
-    print(f"Sent: {value:.3f}")
+    print(f"Sent rjx: {rjx:.3f} rjy: {rjy:.3f} ljy: {ljy:.3f} ljx: {ljx:.3f} rt: {rt:.3f}")
 
     time.sleep(0.2)  # 50 Hz update rate
