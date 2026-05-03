@@ -38,4 +38,4 @@ while True:
 
     print(f"Sent rjx: {rjx:.3f} rjy: {rjy:.3f} ljy: {ljy:.3f} ljx: {ljx:.3f} rt: {rt:.3f}")
 
-    time.sleep(0.2)  # 50 Hz update rate
+    time.sleep(0.02)  # 50 Hz update rate
