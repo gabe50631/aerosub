@@ -3,6 +3,7 @@ import struct
 import time
 import threading
 from periphery import GPIO
+import serial
 
 # PIN CONFIGURATION
 ENCODER_PIN_A   = 34    # Motor 1 A
@@ -25,6 +26,7 @@ encoder_2_pos = [0]
 lock1     = threading.Lock()
 lock2     = threading.Lock()
 neutral_pos = 7500
+ser = serial.Serial('/dev/ttyS5', baudrate=9600, timeout=1) # establish serial data out to arduino
 
 # GPIO SETUP
 enc_A       = GPIO(ENCODER_PIN_A,   "in")
@@ -247,6 +249,9 @@ def main():
     sock.setblocking(False)  # non-blocking
     rjx = rjy = ljy = ljx = rt = 0.0 # axes variables
 
+    # front_right, front_left, back, horizontal
+    arduino_data = [0, 0, 0, 0]
+
     last_print = time.time()
 
     try:
@@ -257,16 +262,37 @@ def main():
             except BlockingIOError:
                 pass  # no more packets
 
-            # update motors
-            ballast_pos = rt
-            if ballast_pos < -0.5:
-                home_motors()
-            elif (ballast_pos < 0.5) and (ballast_pos > -0.5):
-                move_to_position(neutral_pos)
-            elif ballast_pos > 0.5:
-                move_to_position(neutral_pos*2)
+            # --- UPDATE BALLAST ---
+            # ballast_pos = rt
+            # if ballast_pos < -0.5:
+            #     home_motors()
+            # elif (ballast_pos < 0.5) and (ballast_pos > -0.5):
+            #     move_to_position(neutral_pos)
+            # elif ballast_pos > 0.5:
+            #     move_to_position(neutral_pos*2)
 
-            # update back thruster
+            # --- UPDATE SERVO ---
+
+            # --- UPDATE THRUSTERS ---
+            # joystick value -> thruster throttle value
+            # if ljy > 0, increse back, decrease front_right, front_left
+            # if ljy < 0, decrease back, increase front_right, front_left
+            # if ljx > 0, increase front_left, decrease front_right
+            # if ljx < 0, decrease front_left, increase front_right
+            arduino_data = [
+                ((-1 * ljy) + (-1 * ljx)) / 2,      # front right
+                ((-1 * ljy) + (ljx)) / 2,           # front left
+                ljy,                                # back
+                rjy                                 # horizontal
+            ]
+            
+            formatted = [format(x, ".3f") for x in arduino_data]
+
+            arduino_message = ",".join(formatted) + "\n"
+
+            ser.write(arduino_message.encode('utf-8'))
+            print("Sent:", arduino_message)
+
             
 
             now = time.time()
@@ -291,6 +317,7 @@ def main():
             zero_button_1.close()
             zero_button_2.close()
             print("\nGPIO closed. Goodbye.")
+            ser.close()
 
 
 if __name__ == "__main__":

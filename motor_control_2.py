@@ -14,7 +14,7 @@ def setup():
     if not os.path.exists(PWM_PATH):
         with open("/sys/class/pwm/pwmchip9/export", "w") as f:
             f.write("0")
-    time.sleep(0.5)
+    time.sleep(2)
     write_pwm("period", PERIOD)
     write_pwm("duty_cycle", NEUTRAL)
     write_pwm("enable", "1")
