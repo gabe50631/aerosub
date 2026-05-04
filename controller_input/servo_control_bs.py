@@ -4,7 +4,7 @@ import socket
 import struct
 
 
-# Configuration
+# pwm configuration
 PWM_PATH = "/sys/class/pwm/pwmchip9/pwm0"
 PERIOD = 20000000  # 20ms (50Hz)
 MIN_PULSE = 1000000

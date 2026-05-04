@@ -4,6 +4,7 @@ import time
 import threading
 from periphery import GPIO
 import serial
+import os
 
 # PIN CONFIGURATION
 ENCODER_PIN_A   = 34    # Motor 1 A
@@ -39,6 +40,15 @@ m2_fwd      = GPIO(MOTOR_2_PIN_FWD,   "out")
 m2_rev      = GPIO(MOTOR_2_PIN_REV,   "out")
 zero_button_1 = GPIO(ZERO_BUTTON_1_PIN, "in")
 zero_button_2 = GPIO(ZERO_BUTTON_2_PIN, "in")
+
+# pwm configuration
+PWM_PATH = "/sys/class/pwm/pwmchip9/pwm0"
+PERIOD = 20000000  # 20ms (50Hz)
+MIN_PULSE = 1000000
+MAX_PULSE = 2000000
+
+# UDP setup
+PORT = 5005
 
 # BUTTON READ - return true when button pressed
 def button_1_pressed():
@@ -233,6 +243,57 @@ def ballast_startup():
         pass
 
 
+def write_pwm(file, value):
+    try:
+        with open(f"{PWM_PATH}/{file}", "w") as f:
+            f.write(str(value))
+    except OSError as e:
+        print(f"Error writing {value} to {file}: {e}")
+
+
+def servo_startup():
+    PWM_CHIP = "/sys/class/pwm/pwmchip9"
+    PWM_PATH = PWM_CHIP + "/pwm0"
+
+    # ensure pwmchip exists
+    if not os.path.exists(PWM_CHIP):
+        raise RuntimeError("pwmchip9 does not exist")
+
+    # export if needed
+    if not os.path.exists(PWM_PATH):
+        try:
+            with open(PWM_CHIP + "/export", "w") as f:
+                f.write("0")
+        except OSError:
+            pass  # already exported or busy
+
+        # wait until pwm0 appears
+        timeout = time.time() + 1.0
+        while not os.path.exists(PWM_PATH):
+            if time.time() > timeout:
+                raise RuntimeError("PWM export failed")
+            time.sleep(0.01)
+
+    # now safe to configure
+    write_pwm("enable", "0")
+    write_pwm("period", PERIOD)
+    write_pwm("duty_cycle", 1500000)
+    write_pwm("enable", "1")
+
+    print(">>> Servo ready")
+
+def servo_set_angle(angle):
+    angle = max(15, min(180, angle))
+    pulse = int(MIN_PULSE + (angle / 180.0) * (MAX_PULSE - MIN_PULSE))
+    write_pwm("duty_cycle", pulse)
+
+def servo_value_to_angle(value):
+    # clamp input
+    value = max(0.0, min(1.0, value))
+
+    # linear map: 0→15, 0.5→97.5, 1→180
+    return 15 + value * (180 - 15)
+
 
 def main():
     t1 = threading.Thread(target=encoder_thread_func, args=(enc_A, enc_B, encoder_1_pos, lock1), daemon=True)
@@ -240,8 +301,13 @@ def main():
     t1.start()
     t2.start()
     print("Encoder thread started.")
-    #ballast_startup()
+    ballast_startup()
     print("Ballasts are ready for input")
+
+    # servo setup
+    servo_startup()
+    servo_val = 0.5 # start centered
+
 
     # receive data
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -263,15 +329,19 @@ def main():
                 pass  # no more packets
 
             # --- UPDATE BALLAST ---
-            # ballast_pos = rt
-            # if ballast_pos < -0.5:
-            #     home_motors()
-            # elif (ballast_pos < 0.5) and (ballast_pos > -0.5):
-            #     move_to_position(neutral_pos)
-            # elif ballast_pos > 0.5:
-            #     move_to_position(neutral_pos*2)
+            ballast_pos = rt
+            if ballast_pos < -0.5:
+                home_motors()
+            elif (ballast_pos < 0.5) and (ballast_pos > -0.5):
+                move_to_position(neutral_pos)
+            elif ballast_pos > 0.5:
+                move_to_position(neutral_pos*2)
 
             # --- UPDATE SERVO ---
+            servo_val = rjx
+            servo_val = (servo_val + 1) / 2
+            servo_angle = servo_value_to_angle(servo_val)
+            servo_set_angle(servo_angle)
 
             # --- UPDATE THRUSTERS ---
             # joystick value -> thruster throttle value
